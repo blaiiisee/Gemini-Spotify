@@ -8,6 +8,12 @@ from google import genai
 import re
 import urllib.parse
 import time
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.responses import RedirectResponse
+
+# Initialize API
+app = FastAPI()
 
 load_dotenv()
 
@@ -20,14 +26,6 @@ refresh_token = os.getenv("REFRESH_TOKEN")
 
 # Configure Gemini API Connection
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# Open the JSON genres file for reading
-with open('genre-seeds.json', 'r') as file:
-    # Load the JSON data from the file into a Python dictionary
-    data = json.load(file)
-    
-    # Access the list associated with the "genres" key
-    genres = data['genres']
 
 # Retrieve client/app/server.py token for API calls
 def get_client_token():
@@ -206,30 +204,48 @@ def extract_playlist_data(text: str):
 # FUNCTION: Retrieve recommended track from Gemini based on user's top artists and 'feel' prompt
 def get_recommendations(top_artists, prompt):
     client = genai.Client()
-    response = client.models.generate_content(
-        model="gemini-2.5-pro",
-        contents=[
-            (
-                "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
-                "I will describe how I feel, and you will create a playlist that perfectly matches the mood, "
-                "drawing primarily from my top artists: "
-            ), 
-            str(top_artists),
-            (
-                ". You may include as few or as many of these artists as you like, "
-                "and you may also include songs from other artists with a similar sound, mood, or vibe but keep these at a maximum of 5 songs. "
-                "If I ask for specific artists (e.g. 'tracks by Taylor Swift and Jeremy Zucker'), "
-                "prioritize them by suggesting over half of the playlist with their songs while still including a few stylistically "
-                "compatible tracks unless I explicitly say otherwise. If I mention specific songs or lyrics, ENSURE that these songs are included. "
-                "Only recommend songs that actually exist on Spotify. "
-                "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
-                "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
-                "Now, here’s how I’m feeling: "
-            ),
-            prompt
-        ]
-    )
-    return extract_playlist_data(response.text)
+
+    if (top_artists):
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[
+                (
+                    "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
+                    "I will describe how I feel, and you will create a playlist that perfectly matches the mood, "
+                    "drawing primarily from my top artists: "
+                ), 
+                str(top_artists),
+                (
+                    ". You may include as few or as many of these artists as you like, "
+                    "and you may also include songs from other artists with a similar sound, mood, or vibe but keep these at a maximum of 5 songs. "
+                    "If I ask for specific artists (e.g. 'tracks by Taylor Swift and Jeremy Zucker'), "
+                    "prioritize them by suggesting over half of the playlist with their songs while still including a few stylistically "
+                    "compatible tracks unless I explicitly say otherwise. If I mention specific songs or lyrics, ENSURE that these songs are included. "
+                    "Only recommend songs that actually exist on Spotify. "
+                    "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
+                    "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
+                    "Now, here’s how I’m feeling: "
+                ),
+                prompt
+            ]
+        )
+        return extract_playlist_data(response.text)
+    else:
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[
+                (
+                    "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
+                    "I will describe how I feel, and you will create a playlist that perfectly matches the mood. "
+                    "Only recommend songs that actually exist on Spotify. "
+                    "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
+                    "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
+                    "Now, here’s how I’m feeling: "
+                ),
+                prompt
+            ]
+        )
+        return extract_playlist_data(response.text)
 
 # FUNCTION: Search for song ids in Spotify given a list of tracks
 def get_song_ids(token, tracks):
@@ -286,6 +302,64 @@ def get_song_ids(token, tracks):
 
     return song_ids
 
+
+# ----- Define Endpoints -----
+
+# default endpoint
+@app.get("/")
+def root():
+    return {"Hello": "World"}
+
+# Login?????
+#
+#
+
+# Get user's top artists
+@app.get("/top-artists")
+def return_top_artists():
+    print("Getting Client Token...")
+    client_token = get_client_token()
+    print("Refreshing Token...")
+    access_token = refresh_access_token(refresh_token)["access_token"]
+    print("Retrieving User ID...")
+    user_id = get_user_id(access_token)
+    top_artists = get_top_artists(access_token)
+    return top_artists
+
+# Define scheme for incoming JSON data
+class PromptRequest(BaseModel):
+    prompt: str
+
+# Get recommendations for the user based on prompt
+@app.post("/generate-playlist")
+def generate_playlist(request: PromptRequest):
+    prompt = request.prompt
+
+    print("Getting Client Token...")
+    client_token = get_client_token()
+    print("Refreshing Token...")
+    access_token = refresh_access_token(refresh_token)["access_token"]
+    print("Retrieving User ID...")
+    user_id = get_user_id(access_token)
+
+    print("\n----------START----------")
+    top_artists = get_top_artists(access_token)
+    print("Generating recommendations...")
+    new_playlist = get_recommendations(top_artists, prompt)
+    title, description = new_playlist['title'], new_playlist['description']
+    print("\n"+title)
+    print(description + "\n")
+    songs = get_song_ids(client_token, new_playlist['songs'])
+    playlist_uri = create_playlist(access_token, user_id, title, description, False)
+    add_tracks_to_playlist(access_token, playlist_uri, songs)
+    print("\nPlaylist Generation Finished!")
+    print("----------END----------")
+
+    return {"received_prompt" : prompt}
+
+
+# ----- CLI Testing -----
+'''
 if __name__ == '__main__':
     print("Getting Client Token...")
     client_token = get_client_token()
@@ -323,3 +397,4 @@ if __name__ == '__main__':
     add_tracks_to_playlist(access_token, playlist_uri, songs)
     print("\nPlaylist Generation Finished!")
     print("----------END----------")
+'''
