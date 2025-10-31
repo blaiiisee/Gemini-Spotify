@@ -8,7 +8,7 @@ from google import genai
 import re
 import urllib.parse
 import time
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import RedirectResponse
 
@@ -19,6 +19,10 @@ load_dotenv()
 
 client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
+redirect_uri = os.getenv("REDIRECT_URI")
+
+# In-memory token storage (for dev/testing)
+user_tokens = {}
 
 # Update Functionality (needs frontend?)
 auth_code = os.getenv("AUTH_CODE")
@@ -248,7 +252,7 @@ def get_recommendations(top_artists, prompt):
         return extract_playlist_data(response.text)
 
 # FUNCTION: Search for song ids in Spotify given a list of tracks
-def get_song_ids(token, tracks):
+def get_song_uris(token, tracks):
     """
     Search for a list of (track_name, artist_name) pairs and return their Spotify track URIs.
     Tracks should be a list of tuples or lists: [(track, artist), ...]
@@ -302,6 +306,24 @@ def get_song_ids(token, tracks):
 
     return song_ids
 
+# FUNCTION: Search for a set of tracks given a list of IDs
+def get_tracks(token: str, song_ids: list[str]):
+    """
+    Fetches track details for a list of Spotify track IDs.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    ids_param = ",".join(song_ids)
+    url = f"https://api.spotify.com/v1/tracks?ids={ids_param}"
+
+    response = requests.get(url, headers=headers)
+
+    # Error handling
+    if response.status_code != 200:
+        print(f"Error fetching tracks: {response.status_code} - {response.text}")
+        return []
+
+    data = response.json()
+    return data.get("tracks", [])
 
 # ----- Define Endpoints -----
 
@@ -310,29 +332,105 @@ def get_song_ids(token, tracks):
 def root():
     return {"Hello": "World"}
 
-# Login?????
-#
-#
+# Login to Spotify
+@app.get("/login")
+def login_to_spotify():
+    """
+    Redirects user to Spotify authorization page.
+    """
+    scopes = "playlist-modify-public playlist-modify-private user-top-read"
+    auth_url = (
+        "https://accounts.spotify.com/authorize"
+        f"?response_type=code"
+        f"&client_id={client_id}"
+        f"&scope={scopes}"
+        f"&redirect_uri={redirect_uri}"
+    )
+    return RedirectResponse(url=auth_url)
+
+# Callback to handle Spotify Login
+@app.get("/callback")
+def spotify_callback(code: str):
+    """
+    Handles Spotify redirect and exchanges the code for tokens.
+    """
+    token_url = "https://accounts.spotify.com/api/token"
+    auth_string = f"{client_id}:{client_secret}"
+    auth_header = base64.b64encode(auth_string.encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {auth_header}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri
+    }
+
+    response = requests.post(token_url, headers=headers, data=data)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Failed to get token from Spotify")
+
+    tokens = response.json()
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+
+    # Store in memory (dev only)
+    user_tokens["current_user"] = {
+        "access_token": access_token,
+        "refresh_token": refresh_token
+    }
+
+    # Option A: return tokens directly to frontend
+    return {
+        "message": "Spotify login successful",
+        "access_token": access_token,
+        "refresh_token": refresh_token
+    }
+
+# For testing, get locally-saved tokens
+def get_current_token():
+    """
+    Retrieve access token from in-memory store.
+    In real use, frontend should pass token in headers.
+    """
+    token_data = user_tokens.get("current_user")
+    if not token_data:
+        raise HTTPException(status_code=401, detail="User not logged in")
+    return token_data["access_token"]
+
+
+# Retrieve user's Spotify profile information
+@app.get("/me")
+def get_spotify_profile(access_token: str = Depends(get_current_token)):
+    """
+    Example route to get current user's Spotify profile.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get("https://api.spotify.com/v1/me", headers=headers)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    return response.json()
+
 
 # Get user's top artists
 @app.get("/top-artists")
-def return_top_artists():
-    print("Getting Client Token...")
-    client_token = get_client_token()
-    print("Refreshing Token...")
-    access_token = refresh_access_token(refresh_token)["access_token"]
-    print("Retrieving User ID...")
-    user_id = get_user_id(access_token)
+def return_top_artists(access_token: str = Depends(get_current_token)):
     top_artists = get_top_artists(access_token)
     return top_artists
+
 
 # Define scheme for incoming JSON data
 class PromptRequest(BaseModel):
     prompt: str
 
+
 # Get recommendations for the user based on prompt
-@app.post("/generate-playlist")
-def generate_playlist(request: PromptRequest):
+@app.post("/generate-recommendations")
+def generate_recommendations(request: PromptRequest):
     prompt = request.prompt
 
     print("Getting Client Token...")
@@ -340,22 +438,25 @@ def generate_playlist(request: PromptRequest):
     print("Refreshing Token...")
     access_token = refresh_access_token(refresh_token)["access_token"]
     print("Retrieving User ID...")
-    user_id = get_user_id(access_token)
 
-    print("\n----------START----------")
     top_artists = get_top_artists(access_token)
+
     print("Generating recommendations...")
     new_playlist = get_recommendations(top_artists, prompt)
     title, description = new_playlist['title'], new_playlist['description']
-    print("\n"+title)
-    print(description + "\n")
-    songs = get_song_ids(client_token, new_playlist['songs'])
-    playlist_uri = create_playlist(access_token, user_id, title, description, False)
-    add_tracks_to_playlist(access_token, playlist_uri, songs)
-    print("\nPlaylist Generation Finished!")
-    print("----------END----------")
 
-    return {"received_prompt" : prompt}
+    song_uris = get_song_uris(client_token, new_playlist['songs'])
+    song_ids = []
+
+    # Extract the track IDs safely from URIs
+    song_ids = [uri.split(":")[-1] for uri in song_uris if uri.startswith("spotify:track:")]
+    
+    tracks = get_tracks(client_token, song_ids)
+
+    return {"title": title,
+            "description": description,
+            "song_uris" : song_uris,
+            "tracks" : tracks}
 
 
 # ----- CLI Testing -----
@@ -392,7 +493,7 @@ if __name__ == '__main__':
     title, description = new_playlist['title'], new_playlist['description']
     print("\n"+title)
     print(description + "\n")
-    songs = get_song_ids(client_token, new_playlist['songs'])
+    songs = get_song_uris(client_token, new_playlist['songs'])
     playlist_uri = create_playlist(access_token, user_id, title, description, False)
     add_tracks_to_playlist(access_token, playlist_uri, songs)
     print("\nPlaylist Generation Finished!")
