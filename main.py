@@ -11,6 +11,7 @@ import time
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import RedirectResponse
+from typing import List
 
 # Initialize API
 app = FastAPI()
@@ -437,7 +438,6 @@ def generate_recommendations(request: PromptRequest):
     client_token = get_client_token()
     print("Refreshing Token...")
     access_token = refresh_access_token(refresh_token)["access_token"]
-    print("Retrieving User ID...")
 
     top_artists = get_top_artists(access_token)
 
@@ -457,6 +457,25 @@ def generate_recommendations(request: PromptRequest):
             "description": description,
             "song_uris" : song_uris,
             "tracks" : tracks}
+
+class PlaylistRequest(BaseModel):
+    title: str
+    description: str
+    song_uris: List[str]
+
+@app.post("/generate_playlist")
+def generate_playlist(request: PlaylistRequest):
+    print("Getting Client Token...")
+    client_token = get_client_token()
+    print("Refreshing Token...")
+    access_token = refresh_access_token(refresh_token)["access_token"]
+    print("Retrieving User ID...")
+    user_id = get_user_id(access_token)
+
+    playlist_id = create_playlist(access_token, user_id, request.title, request.description, False)
+    add_tracks_to_playlist(access_token, playlist_id, request.song_uris)
+
+    return {"message": "Playlist creation completed!", "playlist_id": playlist_id}
 
 
 # ----- CLI Testing -----
