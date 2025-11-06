@@ -423,7 +423,7 @@ class PromptRequest(BaseModel):
 
 # Get recommendations for the user based on prompt
 @app.post("/generate-recommendations")
-def generate_recommendations(request: PromptRequest):
+def generate_recommendations(request: PromptRequest, refresh_token):
     prompt = request.prompt
 
     print("Getting Client Token...")
@@ -455,8 +455,8 @@ class PlaylistRequest(BaseModel):
     description: str
     song_uris: List[str]
 
-@app.post("/generate_playlist")
-def generate_playlist(request: PlaylistRequest):
+@app.post("/generate-playlist")
+def generate_playlist(request: PlaylistRequest, refresh_token):
     print("Getting Client Token...")
     client_token = get_client_token()
     print("Refreshing Token...")
