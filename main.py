@@ -4,7 +4,7 @@ import base64
 from requests import post, get
 import requests
 import json
-from google import genai
+import google.generativeai as genai
 import re
 import urllib.parse
 import time
