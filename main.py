@@ -208,47 +208,38 @@ def extract_playlist_data(text: str):
     
 # FUNCTION: Retrieve recommended track from Gemini based on user's top artists and 'feel' prompt
 def get_recommendations(top_artists, prompt):
-    client = genai.Client()
+    model = genai.GenerativeModel("gemini-1.5-pro")
 
-    if (top_artists):
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=[
-                (
-                    "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
-                    "I will describe how I feel, and you will create a playlist that perfectly matches the mood, "
-                    "drawing primarily from my top artists: "
-                ), 
-                str(top_artists),
-                (
-                    ". You may include as few or as many of these artists as you like, "
-                    "and you may also include songs from other artists with a similar sound, mood, or vibe but keep these at a maximum of 5 songs. "
-                    "If I ask for specific artists (e.g. 'tracks by Taylor Swift and Jeremy Zucker'), "
-                    "prioritize them by suggesting over half of the playlist with their songs while still including a few stylistically "
-                    "compatible tracks unless I explicitly say otherwise. If I mention specific songs or lyrics, ENSURE that these songs are included. "
-                    "Only recommend songs that actually exist on Spotify. "
-                    "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
-                    "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
-                    "Now, here’s how I’m feeling: "
-                ),
-                prompt
-            ]
+    if top_artists:
+        response = model.generate_content(
+            (
+                "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
+                "I will describe how I feel, and you will create a playlist that perfectly matches the mood, "
+                "drawing primarily from my top artists: "
+                f"{top_artists}. "
+                "You may include as few or as many of these artists as you like, "
+                "and you may also include songs from other artists with a similar sound, mood, or vibe but keep these at a maximum of 5 songs. "
+                "If I ask for specific artists (e.g. 'tracks by Taylor Swift and Jeremy Zucker'), "
+                "prioritize them by suggesting over half of the playlist with their songs while still including a few stylistically "
+                "compatible tracks unless I explicitly say otherwise. If I mention specific songs or lyrics, ENSURE that these songs are included. "
+                "Only recommend songs that actually exist on Spotify. "
+                "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
+                "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
+                "Now, here’s how I’m feeling: "
+                f"{prompt}"
+            )
         )
-        return extract_playlist_data(response.text)
     else:
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=[
-                (
-                    "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
-                    "I will describe how I feel, and you will create a playlist that perfectly matches the mood. "
-                    "Only recommend songs that actually exist on Spotify. "
-                    "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
-                    "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
-                    "Now, here’s how I’m feeling: "
-                ),
-                prompt
-            ]
+        response = model.generate_content(
+            (
+                "You are a world-class song-recommending maestro with deep knowledge of modern pop, indie, and mainstream hits. "
+                "I will describe how I feel, and you will create a playlist that perfectly matches the mood. "
+                "Only recommend songs that actually exist on Spotify. "
+                "You will recommend around 20 songs and must strictly follow this format — include the brackets and underscores exactly as shown:\n\n"
+                "[Playlist Title] __ [Playlist Description] __ [Song name 1 - Artist Name, Song name 2 - Artist Name, Song name 3 - Artist Name, ... , Song name 15 - Artist Name]\n\n"
+                "Now, here’s how I’m feeling: "
+                f"{prompt}"
+            )
         )
         return extract_playlist_data(response.text)
 
