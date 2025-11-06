@@ -30,7 +30,7 @@ auth_code = os.getenv("AUTH_CODE")
 refresh_token = os.getenv("REFRESH_TOKEN")
 
 # Configure Gemini API Connection
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Retrieve client/app/server.py token for API calls
 def get_client_token():
@@ -208,6 +208,7 @@ def extract_playlist_data(text: str):
     
 # FUNCTION: Retrieve recommended track from Gemini based on user's top artists and 'feel' prompt
 def get_recommendations(top_artists, prompt):
+    genai.configure(api_key=GOOGLE_API_KEY)
     model = genai.GenerativeModel("gemini-2.5-pro")
 
     if top_artists:
@@ -241,7 +242,7 @@ def get_recommendations(top_artists, prompt):
                 f"{prompt}"
             )
         )
-        return extract_playlist_data(response.text)
+    return extract_playlist_data(response.text)
 
 # FUNCTION: Search for song ids in Spotify given a list of tracks
 def get_song_uris(token, tracks):
