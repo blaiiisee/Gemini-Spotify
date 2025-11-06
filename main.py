@@ -208,7 +208,7 @@ def extract_playlist_data(text: str):
     
 # FUNCTION: Retrieve recommended track from Gemini based on user's top artists and 'feel' prompt
 def get_recommendations(top_artists, prompt):
-    model = genai.GenerativeModel("gemini-1.5-pro")
+    model = genai.GenerativeModel("gemini-2.5-pro")
 
     if top_artists:
         response = model.generate_content(
