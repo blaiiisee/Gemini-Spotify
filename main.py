@@ -21,6 +21,7 @@ load_dotenv()
 client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
 redirect_uri = os.getenv("REDIRECT_URI")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 # In-memory token storage (for dev/testing)
 user_tokens = {}
@@ -378,11 +379,8 @@ def spotify_callback(code: str):
     #}
 
     # Option A: return tokens directly to frontend
-    return {
-        "message": "Spotify login successful",
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }
+    redirect_url = f"{FRONTEND_URL}/callback?refresh_token={refresh_token}"
+    return RedirectResponse(url=redirect_url)
 
 # For testing, get locally-saved tokens
 def get_current_token():
