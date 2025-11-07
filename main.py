@@ -372,10 +372,10 @@ def spotify_callback(code: str):
     refresh_token = tokens.get("refresh_token")
 
     # Store in memory (dev only)
-    user_tokens["current_user"] = {
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }
+    #user_tokens["current_user"] = {
+    #    "access_token": access_token,
+    #    "refresh_token": refresh_token
+    #}
 
     # Option A: return tokens directly to frontend
     return {
@@ -396,12 +396,16 @@ def get_current_token():
     return token_data["access_token"]
 
 
-# Retrieve user's Spotify profile information
+# Retrieve user's Spotify profile information, for testing
 @app.get("/me")
-def get_spotify_profile(access_token: str = Depends(get_current_token)):
+def get_spotify_profile(refresh_token):
     """
     Example route to get current user's Spotify profile.
     """
+
+    print("Refreshing Token...")
+    access_token = refresh_access_token(refresh_token)["access_token"]
+
     headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get("https://api.spotify.com/v1/me", headers=headers)
     if response.status_code != 200:
